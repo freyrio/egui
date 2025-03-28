@@ -8,10 +8,10 @@
 use emath::{pos2, remap, vec2, GuiRounding as _, NumExt, Pos2, Rect, Rot2, Vec2};
 
 use crate::{
-    color::ColorMode, emath, stroke::PathStroke, texture_atlas::PreparedDisc, ArcShape,
-    CircleShape, ClippedPrimitive, ClippedShape, Color32, CornerRadiusF32, CubicBezierShape,
-    EllipseShape, LineCap, LineJoin, Mesh, PathShape, Primitive, QuadraticBezierShape, RectShape,
-    Shape, Stroke, StrokeKind, TextShape, TextureId, Vertex, WHITE_UV,
+    color::ColorMode, emath, stroke::PathStroke, texture_atlas::PreparedDisc, CircleShape,
+    ClippedPrimitive, ClippedShape, Color32, CornerRadiusF32, CubicBezierShape, EllipseShape, Mesh,
+    PathShape, Primitive, QuadraticBezierShape, RectShape, Shape, Stroke, StrokeKind, TextShape,
+    TextureId, Vertex, WHITE_UV,
 };
 
 // ----------------------------------------------------------------------------
@@ -1021,33 +1021,7 @@ fn stroke_and_fill_path(
                 }
             }
 
-            // For thin lines with line caps
-            if path_type == PathType::Open {
-                out.reserve_triangles(4 * n as usize + 8); // Extra triangles for caps
-                out.reserve_vertices(3 * n as usize + 12); // Extra vertices for caps
-
-                // Start cap
-                if stroke.cap != LineCap::Butt {
-                    let start = path[0];
-                    let p = start.pos;
-                    let n = -start.normal.rot90(); // Tangent direction pointing inward
-
-                    generate_line_cap(
-                        stroke.cap,
-                        p,
-                        n,
-                        feathering * 2.0, // For thin lines, use feathering as width
-                        feathering,
-                        color_middle,
-                        color_outer,
-                        out,
-                        |cm, pos| mul_color(get_color(cm, pos), stroke.width / feathering),
-                    );
-                }
-            } else {
-                out.reserve_triangles(4 * n as usize);
-                out.reserve_vertices(3 * n as usize);
-            }
+            // TODO(emilk): add line caps (if this is an open line).
 
             let opacity = stroke.width / feathering;
 
@@ -1058,41 +1032,20 @@ fn stroke_and_fill_path(
             .       |---|          feathering (pixel width)
             */
 
+            out.reserve_triangles(4 * n as usize);
+            out.reserve_vertices(3 * n as usize);
+
             let mut i0 = n - 1;
             for i1 in 0..n {
                 let connect_with_previous = path_type == PathType::Closed || i1 > 0;
                 let p1 = path[i1 as usize];
                 let p = p1.pos;
-                let normal = p1.normal;
-                out.colored_vertex(p + normal * feathering, color_outer);
+                let n = p1.normal;
+                out.colored_vertex(p + n * feathering, color_outer);
                 out.colored_vertex(p, mul_color(get_color(color_middle, p), opacity));
-                out.colored_vertex(p - normal * feathering, color_fill);
+                out.colored_vertex(p - n * feathering, color_fill);
 
                 if connect_with_previous {
-                    // Check if we need to add a join
-                    if i1 > 0 && i1 < n && path_type == PathType::Open {
-                        let p0 = path[i0 as usize];
-                        let normal_prev = p0.normal;
-                        let normal_curr = normal;
-
-                        if (normal_prev.dot(normal_curr)).abs() < 0.99 {
-                            // Only add join if the normals are different enough
-                            generate_line_join(
-                                stroke.join,
-                                p,
-                                normal_prev,
-                                normal_curr,
-                                feathering * 2.0, // For thin lines, use feathering as width
-                                feathering,
-                                stroke.miter_limit,
-                                color_middle,
-                                color_outer,
-                                out,
-                                |cm, pos| mul_color(get_color(cm, pos), opacity),
-                            );
-                        }
-                    }
-
                     out.add_triangle(idx + 3 * i0 + 0, idx + 3 * i0 + 1, idx + 3 * i1 + 0);
                     out.add_triangle(idx + 3 * i0 + 1, idx + 3 * i1 + 0, idx + 3 * i1 + 1);
 
@@ -1101,25 +1054,6 @@ fn stroke_and_fill_path(
                 }
 
                 i0 = i1;
-            }
-
-            // End cap for open paths
-            if path_type == PathType::Open && stroke.cap != LineCap::Butt {
-                let end = path[n as usize - 1];
-                let p = end.pos;
-                let normal = end.normal.rot90(); // Tangent direction pointing outward
-
-                generate_line_cap(
-                    stroke.cap,
-                    p,
-                    normal,
-                    feathering * 2.0, // For thin lines, use feathering as width
-                    feathering,
-                    color_middle,
-                    color_outer,
-                    out,
-                    |cm, pos| mul_color(get_color(cm, pos), opacity),
-                );
             }
 
             if color_fill != Color32::TRANSPARENT {
@@ -1154,43 +1088,17 @@ fn stroke_and_fill_path(
                     for i1 in 0..n {
                         let p1 = path[i1 as usize];
                         let p = p1.pos;
-                        let normal = p1.normal;
-
-                        // Check if we need to add a join
-                        if i1 > 0 || i1 == n - 1 {
-                            // For closed path, also check last-to-first connection
-                            let p0 = path[i0 as usize];
-                            let normal_prev = p0.normal;
-                            let normal_curr = normal;
-
-                            if (normal_prev.dot(normal_curr)).abs() < 0.99 {
-                                // Only add join if the normals are different enough
-                                generate_line_join(
-                                    stroke.join,
-                                    p,
-                                    normal_prev,
-                                    normal_curr,
-                                    stroke.width,
-                                    feathering,
-                                    stroke.miter_limit,
-                                    color_middle,
-                                    color_outer,
-                                    out,
-                                    get_color,
-                                );
-                            }
-                        }
-
-                        out.colored_vertex(p + normal * outer_rad, color_outer);
+                        let n = p1.normal;
+                        out.colored_vertex(p + n * outer_rad, color_outer);
                         out.colored_vertex(
-                            p + normal * inner_rad,
-                            get_color(color_middle, p + normal * inner_rad),
+                            p + n * inner_rad,
+                            get_color(color_middle, p + n * inner_rad),
                         );
                         out.colored_vertex(
-                            p - normal * inner_rad,
-                            get_color(color_middle, p - normal * inner_rad),
+                            p - n * inner_rad,
+                            get_color(color_middle, p - n * inner_rad),
                         );
-                        out.colored_vertex(p - normal * outer_rad, color_fill);
+                        out.colored_vertex(p - n * outer_rad, color_fill);
 
                         out.add_triangle(idx + 4 * i0 + 0, idx + 4 * i0 + 1, idx + 4 * i1 + 0);
                         out.add_triangle(idx + 4 * i0 + 1, idx + 4 * i1 + 0, idx + 4 * i1 + 1);
@@ -1213,73 +1121,52 @@ fn stroke_and_fill_path(
                     }
                 }
                 PathType::Open => {
-                    // Reserve extra space for caps and joins
-                    let join_count = n as usize - 2; // Joins occur at interior vertices
-                    let estimated_join_vertices = join_count * 8; // Average estimate for joins
-                    let estimated_cap_vertices = if stroke.cap == LineCap::Round {
-                        24 // Round caps need more vertices
-                    } else {
-                        8
-                    };
+                    // Anti-alias the ends by extruding the outer edge and adding
+                    // two more triangles to each end:
 
-                    out.reserve_triangles(
-                        6 * n as usize + estimated_join_vertices + estimated_cap_vertices,
-                    );
-                    out.reserve_vertices(
-                        4 * n as usize + estimated_join_vertices + estimated_cap_vertices,
-                    );
+                    //   | aa |       | aa |
+                    //    _________________   ___
+                    //   | \    added    / |  feathering
+                    //   |   \ ___p___ /   |  ___
+                    //   |    |       |    |
+                    //   |    |  opa  |    |
+                    //   |    |  que  |    |
+                    //   |    |       |    |
 
-                    // Start cap
+                    // (in the future it would be great with an option to add a circular end instead)
+
+                    // TODO(emilk): we should probably shrink before adding the line caps,
+                    // so that we don't add to the area of the line.
+                    // TODO(emilk): make line caps optional.
+
+                    out.reserve_triangles(6 * n as usize + 4);
+                    out.reserve_vertices(4 * n as usize);
+
                     {
-                        let start = path[0];
-                        let p = start.pos;
-                        let tangent = -start.normal.rot90(); // Tangent pointing inward
-
-                        generate_line_cap(
-                            stroke.cap,
-                            p,
-                            tangent,
-                            stroke.width,
-                            feathering,
-                            color_middle,
-                            color_outer,
-                            out,
-                            get_color,
+                        let end = path[0];
+                        let p = end.pos;
+                        let n = end.normal;
+                        let back_extrude = n.rot90() * feathering;
+                        out.colored_vertex(p + n * outer_rad + back_extrude, color_outer);
+                        out.colored_vertex(
+                            p + n * inner_rad,
+                            get_color(color_middle, p + n * inner_rad),
                         );
+                        out.colored_vertex(
+                            p - n * inner_rad,
+                            get_color(color_middle, p - n * inner_rad),
+                        );
+                        out.colored_vertex(p - n * outer_rad + back_extrude, color_outer);
+
+                        out.add_triangle(idx + 0, idx + 1, idx + 2);
+                        out.add_triangle(idx + 0, idx + 2, idx + 3);
                     }
 
-                    // Process line segments and joins
                     let mut i0 = 0;
-                    for i1 in 1..n {
-                        let p1 = path[i1 as usize];
-                        let p = p1.pos;
-                        let curr_normal = p1.normal;
-
-                        // Add join if not at first point
-                        if i1 > 1 {
-                            let p0 = path[i0 as usize];
-                            let prev_normal = p0.normal;
-
-                            if (prev_normal.dot(curr_normal)).abs() < 0.99 {
-                                // Only add join if the normals are different enough
-                                generate_line_join(
-                                    stroke.join,
-                                    p,
-                                    prev_normal,
-                                    curr_normal,
-                                    stroke.width,
-                                    feathering,
-                                    stroke.miter_limit,
-                                    color_middle,
-                                    color_outer,
-                                    out,
-                                    get_color,
-                                );
-                            }
-                        }
-
-                        // Add the current segment vertices
-                        let n = curr_normal;
+                    for i1 in 1..n - 1 {
+                        let point = path[i1 as usize];
+                        let p = point.pos;
+                        let n = point.normal;
                         out.colored_vertex(p + n * outer_rad, color_outer);
                         out.colored_vertex(
                             p + n * inner_rad,
@@ -1303,23 +1190,35 @@ fn stroke_and_fill_path(
                         i0 = i1;
                     }
 
-                    // End cap
                     {
-                        let end = path[n as usize - 1];
+                        let i1 = n - 1;
+                        let end = path[i1 as usize];
                         let p = end.pos;
-                        let tangent = end.normal.rot90(); // Tangent pointing outward
-
-                        generate_line_cap(
-                            stroke.cap,
-                            p,
-                            tangent,
-                            stroke.width,
-                            feathering,
-                            color_middle,
-                            color_outer,
-                            out,
-                            get_color,
+                        let n = end.normal;
+                        let back_extrude = -n.rot90() * feathering;
+                        out.colored_vertex(p + n * outer_rad + back_extrude, color_outer);
+                        out.colored_vertex(
+                            p + n * inner_rad,
+                            get_color(color_middle, p + n * inner_rad),
                         );
+                        out.colored_vertex(
+                            p - n * inner_rad,
+                            get_color(color_middle, p - n * inner_rad),
+                        );
+                        out.colored_vertex(p - n * outer_rad + back_extrude, color_outer);
+
+                        out.add_triangle(idx + 4 * i0 + 0, idx + 4 * i0 + 1, idx + 4 * i1 + 0);
+                        out.add_triangle(idx + 4 * i0 + 1, idx + 4 * i1 + 0, idx + 4 * i1 + 1);
+
+                        out.add_triangle(idx + 4 * i0 + 1, idx + 4 * i0 + 2, idx + 4 * i1 + 1);
+                        out.add_triangle(idx + 4 * i0 + 2, idx + 4 * i1 + 1, idx + 4 * i1 + 2);
+
+                        out.add_triangle(idx + 4 * i0 + 2, idx + 4 * i0 + 3, idx + 4 * i1 + 2);
+                        out.add_triangle(idx + 4 * i0 + 3, idx + 4 * i1 + 2, idx + 4 * i1 + 3);
+
+                        // The extension:
+                        out.add_triangle(idx + 4 * i1 + 0, idx + 4 * i1 + 1, idx + 4 * i1 + 2);
+                        out.add_triangle(idx + 4 * i1 + 0, idx + 4 * i1 + 2, idx + 4 * i1 + 3);
                     }
                 }
             }
@@ -1378,7 +1277,13 @@ fn stroke_and_fill_path(
 
         if color_fill != Color32::TRANSPARENT {
             // We Need to create new vertices, because the ones we used for the stroke
-            // are offset by the stroke width.
+            // has the wrong color.
+
+            // Shrink to ignore the stroke…
+            for point in &mut *path {
+                point.pos -= 0.5 * stroke.width * point.normal;
+            }
+            // …then fill:
             fill_closed_path(feathering, path, color_fill, out);
         }
     }
@@ -1572,9 +1477,6 @@ impl Tessellator {
             Shape::CubicBezier(cubic_shape) => self.tessellate_cubic_bezier(&cubic_shape, out),
             Shape::Callback(_) => {
                 panic!("Shape::Callback passed to Tessellator");
-            }
-            Shape::Arc(arc) => {
-                self.tessellate_arc(&arc, out);
             }
         }
     }
@@ -2299,25 +2201,6 @@ impl Tessellator {
                 .stroke(self.feathering, PathType::Open, stroke, out);
         }
     }
-
-    /// Tessellate a single [`ArcShape`] into a [`Mesh`].
-    ///
-    /// * `arc`: the arc to tessellate.
-    /// * `out`: triangles are appended to this.
-    pub fn tessellate_arc(&mut self, arc: &ArcShape, out: &mut Mesh) {
-        if self.options.coarse_tessellation_culling
-            && !arc.visual_bounding_rect().intersects(self.clip_rect)
-        {
-            return;
-        }
-
-        let points = arc.flatten(Some(self.options.bezier_tolerance));
-
-        self.scratchpad_path.clear();
-        self.scratchpad_path.add_line_loop(&points);
-        self.scratchpad_path
-            .fill_and_stroke(self.feathering, arc.fill, &arc.stroke, out);
-    }
 }
 
 fn round_line_segment(coord: &mut f32, stroke: &Stroke, pixels_per_point: f32) {
@@ -2449,10 +2332,7 @@ impl Tessellator {
 
                 Shape::Path(path_shape) => 32 < path_shape.points.len(),
 
-                Shape::QuadraticBezier(_)
-                | Shape::CubicBezier(_)
-                | Shape::Ellipse(_)
-                | Shape::Arc(_) => true,
+                Shape::QuadraticBezier(_) | Shape::CubicBezier(_) | Shape::Ellipse(_) => true,
 
                 Shape::Noop
                 | Shape::Text(_)
@@ -2591,380 +2471,5 @@ fn path_bounding_box() {
             }),
             &mut mesh,
         );
-    }
-}
-
-/// Helper function to generate vertices and indices for line caps
-fn generate_line_cap(
-    cap_type: LineCap,
-    pos: Pos2,
-    normal: Vec2,
-    width: f32,
-    feathering: f32,
-    color_middle: &ColorMode,
-    color_outer: Color32,
-    out: &mut Mesh,
-    get_color: impl Fn(&ColorMode, Pos2) -> Color32,
-) -> u32 {
-    let idx = out.vertices.len() as u32;
-    let tangent = normal.rot90();
-
-    match cap_type {
-        LineCap::Butt => {
-            // For butt caps, no additional vertices are needed
-            // as the line segments naturally end at the endpoint
-            0
-        }
-
-        LineCap::Square => {
-            // For square caps, we extend the endpoint by half the line width
-            let extended_pos = pos + normal * (width / 2.0);
-            let half_width = width / 2.0;
-
-            // Left cap corner (outer)
-            out.colored_vertex(
-                extended_pos + tangent * half_width + tangent * feathering,
-                color_outer,
-            );
-            // Left cap corner (inner)
-            out.colored_vertex(
-                extended_pos + tangent * half_width,
-                get_color(color_middle, extended_pos + tangent * half_width),
-            );
-
-            // Right cap corner (inner)
-            out.colored_vertex(
-                extended_pos - tangent * half_width,
-                get_color(color_middle, extended_pos - tangent * half_width),
-            );
-            // Right cap corner (outer)
-            out.colored_vertex(
-                extended_pos - tangent * half_width - tangent * feathering,
-                color_outer,
-            );
-
-            // Original endpoint
-            out.colored_vertex(pos, get_color(color_middle, pos));
-
-            // Connect cap vertices
-            out.add_triangle(idx, idx + 1, idx + 4);
-            out.add_triangle(idx + 1, idx + 2, idx + 4);
-            out.add_triangle(idx + 2, idx + 3, idx + 4);
-
-            5 // Return number of vertices added
-        }
-
-        LineCap::Round => {
-            // For round caps, we add a semi-circle at the endpoint
-            let half_width = width / 2.0;
-            let segments = if width <= 4.0 {
-                4 // Fewer segments for small caps
-            } else if width <= 10.0 {
-                6
-            } else {
-                8
-            };
-
-            // Calculate start and end angles for the arc
-            let start_angle = tangent.y.atan2(tangent.x) - std::f32::consts::FRAC_PI_2;
-            let _end_angle = start_angle + std::f32::consts::PI;
-
-            // Center point of the cap
-            out.colored_vertex(pos, get_color(color_middle, pos));
-
-            let mut vertices_added: u32 = 1;
-
-            // Generate the arc points
-            for i in 0..=segments {
-                let t = i as f32 / segments as f32;
-                let angle = start_angle + t * std::f32::consts::PI;
-                let (sin, cos) = angle.sin_cos();
-                let cap_normal = Vec2::new(cos, sin);
-
-                // Outer feathering vertex
-                out.colored_vertex(pos + cap_normal * (half_width + feathering), color_outer);
-
-                // Inner color vertex
-                out.colored_vertex(
-                    pos + cap_normal * half_width,
-                    get_color(color_middle, pos + cap_normal * half_width),
-                );
-
-                vertices_added += 2;
-
-                // Add triangles (except for the first point)
-                if i > 0 {
-                    // Inner fill triangle connecting to center
-                    out.add_triangle(
-                        idx,                      // Center point
-                        idx + vertices_added - 3, // Previous inner point
-                        idx + vertices_added - 1, // Current inner point
-                    );
-
-                    // Outer feathering quad (as two triangles)
-                    out.add_triangle(
-                        idx + vertices_added - 4, // Previous outer point
-                        idx + vertices_added - 3, // Previous inner point
-                        idx + vertices_added - 1, // Current inner point
-                    );
-
-                    out.add_triangle(
-                        idx + vertices_added - 4, // Previous outer point
-                        idx + vertices_added - 1, // Current inner point
-                        idx + vertices_added - 2, // Current outer point
-                    );
-                }
-            }
-
-            vertices_added
-        }
-    }
-}
-
-/// Calculate angle between two vectors in radians
-/// Returns the signed angle in the range [-PI, PI]
-fn angle_between(v1: Vec2, v2: Vec2) -> f32 {
-    let dot = v1.dot(v2);
-    let det = v1.x * v2.y - v1.y * v2.x;
-    det.atan2(dot)
-}
-
-/// Generate points along an arc
-/// Creates a sequence of points forming an arc from start_angle to end_angle
-/// with the specified number of segments
-#[allow(dead_code)]
-fn generate_arc_points(
-    center: Pos2,
-    radius: f32,
-    start_angle: f32,
-    end_angle: f32,
-    segments: usize,
-) -> Vec<Pos2> {
-    let mut points = Vec::with_capacity(segments + 1);
-
-    for i in 0..=segments {
-        let t = i as f32 / segments as f32;
-        let angle = start_angle * (1.0 - t) + end_angle * t;
-        let (sin, cos) = angle.sin_cos();
-        points.push(center + radius * Vec2::new(cos, sin));
-    }
-
-    points
-}
-
-/// Helper function to generate vertices and indices for line joins
-fn generate_line_join(
-    join_type: LineJoin,
-    pos: Pos2,
-    normal1: Vec2,
-    normal2: Vec2,
-    width: f32,
-    feathering: f32,
-    miter_limit: f32,
-    color_middle: &ColorMode,
-    color_outer: Color32,
-    out: &mut Mesh,
-    get_color: impl Fn(&ColorMode, Pos2) -> Color32,
-) -> u32 {
-    let idx = out.vertices.len() as u32;
-
-    // Calculate dot product to determine the angle
-    let dot = normal1.dot(normal2);
-
-    // If normals are nearly parallel, no special join is needed
-    if (dot).abs() > 0.99 {
-        return 0;
-    }
-
-    match join_type {
-        LineJoin::Miter => {
-            // For miter joins, calculate the miter vector
-            let avg_normal = (normal1 + normal2).normalized();
-            let sin_half_angle = ((1.0 - dot) / 2.0).sqrt();
-
-            // Check if the miter exceeds the limit
-            let miter_length = 1.0 / sin_half_angle;
-
-            if miter_length <= miter_limit {
-                // Apply miter join
-                let miter_vector = avg_normal * (miter_length * width / 2.0);
-
-                // Add outer miter point
-                out.colored_vertex(pos + miter_vector + avg_normal * feathering, color_outer);
-                out.colored_vertex(
-                    pos + miter_vector,
-                    get_color(color_middle, pos + miter_vector),
-                );
-
-                // Add central point
-                out.colored_vertex(pos, get_color(color_middle, pos));
-
-                // Connect to form triangles
-                out.add_triangle(idx, idx + 1, idx + 2);
-
-                3 // Return number of vertices added
-            } else {
-                // Fall back to bevel join if exceeds miter limit
-                return generate_line_join(
-                    LineJoin::Bevel,
-                    pos,
-                    normal1,
-                    normal2,
-                    width,
-                    feathering,
-                    miter_limit,
-                    color_middle,
-                    color_outer,
-                    out,
-                    get_color,
-                );
-            }
-        }
-
-        LineJoin::Bevel => {
-            // For bevel joins, we just connect the endpoints of the two segments
-
-            // Add the two outer points
-            out.colored_vertex(pos + normal1 * (width / 2.0 + feathering), color_outer);
-            out.colored_vertex(
-                pos + normal1 * (width / 2.0),
-                get_color(color_middle, pos + normal1 * (width / 2.0)),
-            );
-
-            out.colored_vertex(
-                pos + normal2 * (width / 2.0),
-                get_color(color_middle, pos + normal2 * (width / 2.0)),
-            );
-            out.colored_vertex(pos + normal2 * (width / 2.0 + feathering), color_outer);
-
-            // Add central point
-            out.colored_vertex(pos, get_color(color_middle, pos));
-
-            // Connect to form triangles
-            out.add_triangle(idx, idx + 1, idx + 2);
-            out.add_triangle(idx, idx + 2, idx + 3);
-            out.add_triangle(idx + 1, idx + 2, idx + 4);
-
-            5 // Return number of vertices added
-        }
-
-        LineJoin::Round => {
-            // For round joins, we add a partial circle between the two normals
-
-            // Determine the number of segments based on the angle and width
-            let angle = angle_between(normal1, normal2).abs();
-            let segments = if width <= 4.0 {
-                2.max((angle * 3.0 / std::f32::consts::PI).ceil() as usize)
-            } else if width <= 10.0 {
-                3.max((angle * 5.0 / std::f32::consts::PI).ceil() as usize)
-            } else {
-                4.max((angle * 8.0 / std::f32::consts::PI).ceil() as usize)
-            };
-
-            let mut vertices_added: u32 = 0;
-
-            // Central point of the join
-            out.colored_vertex(pos, get_color(color_middle, pos));
-            vertices_added += 1;
-
-            // Add first normal point
-            out.colored_vertex(pos + normal1 * (width / 2.0 + feathering), color_outer);
-            out.colored_vertex(
-                pos + normal1 * (width / 2.0),
-                get_color(color_middle, pos + normal1 * (width / 2.0)),
-            );
-            vertices_added += 2;
-
-            // Generate the arc points
-            for i in 1..segments {
-                let t = i as f32 / segments as f32;
-                let interp_normal = (normal1 * (1.0 - t) + normal2 * t).normalized();
-
-                out.colored_vertex(
-                    pos + interp_normal * (width / 2.0 + feathering),
-                    color_outer,
-                );
-                out.colored_vertex(
-                    pos + interp_normal * (width / 2.0),
-                    get_color(color_middle, pos + interp_normal * (width / 2.0)),
-                );
-
-                // Connect triangles
-                out.add_triangle(idx, idx + ((i * 2) + 1) as u32, idx + ((i * 2) - 1) as u32);
-
-                out.add_triangle(
-                    idx + (i * 2) as u32,
-                    idx + ((i * 2) + 1) as u32,
-                    idx + ((i * 2) - 2) as u32,
-                );
-                out.add_triangle(
-                    idx + ((i * 2) - 2) as u32,
-                    idx + ((i * 2) + 1) as u32,
-                    idx + ((i * 2) - 1) as u32,
-                );
-
-                vertices_added += 2;
-            }
-
-            // Add last normal point
-            out.colored_vertex(pos + normal2 * (width / 2.0 + feathering), color_outer);
-            out.colored_vertex(
-                pos + normal2 * (width / 2.0),
-                get_color(color_middle, pos + normal2 * (width / 2.0)),
-            );
-
-            // Connect final triangles
-            let vertex_count = out.vertices.len() as u32;
-            // Verify all indices are within bounds
-            debug_assert!(
-                idx < vertex_count,
-                "idx {} out of bounds {}",
-                idx,
-                vertex_count
-            );
-            debug_assert!(
-                idx + vertices_added + 1 < vertex_count,
-                "idx + vertices_added + 1 {} out of bounds {}",
-                idx + vertices_added + 1,
-                vertex_count
-            );
-            debug_assert!(
-                idx + vertices_added - 1 < vertex_count,
-                "idx + vertices_added - 1 {} out of bounds {}",
-                idx + vertices_added - 1,
-                vertex_count
-            );
-
-            out.add_triangle(idx, idx + vertices_added + 1, idx + vertices_added - 1);
-
-            debug_assert!(
-                idx + vertices_added < vertex_count,
-                "idx + vertices_added {} out of bounds {}",
-                idx + vertices_added,
-                vertex_count
-            );
-            debug_assert!(
-                idx + vertices_added - 2 < vertex_count,
-                "idx + vertices_added - 2 {} out of bounds {}",
-                idx + vertices_added - 2,
-                vertex_count
-            );
-
-            out.add_triangle(
-                idx + vertices_added,
-                idx + vertices_added + 1,
-                idx + vertices_added - 2,
-            );
-
-            out.add_triangle(
-                idx + vertices_added - 2,
-                idx + vertices_added + 1,
-                idx + vertices_added - 1,
-            );
-
-            vertices_added += 2;
-
-            vertices_added
-        }
     }
 }

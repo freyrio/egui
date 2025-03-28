@@ -2,6 +2,7 @@ use crate::{
     pos2, vec2, Align2, Color32, Context, CursorIcon, Id, NumExt, Rect, Response, Sense, Shape, Ui,
     UiBuilder, UiKind, UiStackInfo, Vec2, Vec2b,
 };
+use epaint::{LineCap, LineJoin};
 
 #[derive(Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -408,6 +409,9 @@ pub fn paint_resize_corner_with_style(
     let stroke = Stroke {
         width: 1.0, // Set width to 1.0 to prevent overlapping
         color: color.into(),
+        cap: LineCap::Butt,
+        join: LineJoin::Miter,
+        miter_limit: 4.0,
     };
 
     while w <= rect.width() && w <= rect.height() {

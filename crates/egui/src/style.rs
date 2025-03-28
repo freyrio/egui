@@ -2547,7 +2547,7 @@ impl Widget for &mut Shadow {
 
 impl Widget for &mut Stroke {
     fn ui(self, ui: &mut Ui) -> Response {
-        let Stroke { width, color } = self;
+        let Stroke { width, color, .. } = self;
 
         ui.horizontal(|ui| {
             ui.add(DragValue::new(width).speed(0.1).range(0.0..=f32::INFINITY))

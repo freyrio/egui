@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    color, CircleShape, Color32, ColorMode, CubicBezierShape, EllipseShape, Mesh, PathShape,
-    QuadraticBezierShape, RectShape, Shape, TextShape,
+    color, ArcShape, CircleShape, Color32, ColorMode, CubicBezierShape, EllipseShape, Mesh,
+    PathShape, QuadraticBezierShape, RectShape, Shape, TextShape,
 };
 
 /// Remember to handle [`Color32::PLACEHOLDER`] specially!
@@ -111,6 +111,22 @@ pub fn adjust_colors(
 
         Shape::Callback(_) => {
             // Can't tint user callback code
+        }
+
+        Shape::Arc(ArcShape {
+            center: _,
+            start: _,
+            end: _,
+            radii: _,
+            x_rotation: _,
+            large_arc: _,
+            sweep: _,
+            start_angle: _,
+            fill,
+            stroke,
+        }) => {
+            adjust_color(fill);
+            adjust_color_mode(&mut stroke.color, adjust_color);
         }
     }
 }

@@ -28,6 +28,7 @@ pub mod screenshot;
 pub mod scrolling;
 pub mod sliders;
 pub mod strip_demo;
+mod stroke_and_arcs;
 pub mod table_demo;
 pub mod tests;
 pub mod text_edit;
@@ -40,7 +41,7 @@ pub mod window_options;
 
 pub use {
     about::About, demo_app_windows::DemoWindows, misc_demo_window::MiscDemoWindow,
-    widget_gallery::WidgetGallery,
+    stroke_and_arcs::StrokeAndArcsDemo, widget_gallery::WidgetGallery,
 };
 
 // ----------------------------------------------------------------------------

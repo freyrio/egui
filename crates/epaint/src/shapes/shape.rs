@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    CircleShape, CubicBezierShape, EllipseShape, PaintCallback, PathShape, QuadraticBezierShape,
-    RectShape, TextShape,
+    ArcShape, CircleShape, CubicBezierShape, EllipseShape, PaintCallback, PathShape,
+    QuadraticBezierShape, RectShape, TextShape,
 };
 
 /// A paint primitive such as a circle or a piece of text.
@@ -65,6 +65,9 @@ pub enum Shape {
 
     /// A cubic [Bézier Curve](https://en.wikipedia.org/wiki/B%C3%A9zier_curve).
     CubicBezier(CubicBezierShape),
+
+    /// An arc segment.
+    Arc(ArcShape),
 
     /// Backend-specific painting.
     Callback(PaintCallback),
@@ -382,7 +385,57 @@ impl Shape {
             Self::QuadraticBezier(bezier) => bezier.visual_bounding_rect(),
             Self::CubicBezier(bezier) => bezier.visual_bounding_rect(),
             Self::Callback(custom) => custom.rect,
+            Self::Arc(arc) => arc.visual_bounding_rect(),
         }
+    }
+
+    /// Create an arc
+    #[inline]
+    pub fn arc(
+        start: Pos2,
+        end: Pos2,
+        radii: Vec2,
+        x_rotation: f32,
+        large_arc: bool,
+        sweep: bool,
+        stroke: impl Into<PathStroke>,
+    ) -> Self {
+        Self::Arc(ArcShape::new(
+            start + (end - start) * 0.5, // center point
+            start,
+            end,
+            radii,
+            x_rotation,
+            large_arc,
+            sweep,
+            Color32::TRANSPARENT,
+            stroke,
+        ))
+    }
+
+    /// Create a filled arc
+    #[inline]
+    pub fn arc_filled(
+        start: Pos2,
+        end: Pos2,
+        radii: Vec2,
+        x_rotation: f32,
+        large_arc: bool,
+        sweep: bool,
+        fill: impl Into<Color32>,
+        stroke: impl Into<PathStroke>,
+    ) -> Self {
+        Self::Arc(ArcShape::new(
+            start + (end - start) * 0.5, // center point
+            start,
+            end,
+            radii,
+            x_rotation,
+            large_arc,
+            sweep,
+            fill.into(),
+            stroke,
+        ))
     }
 }
 
@@ -487,6 +540,9 @@ impl Shape {
             }
             Self::Callback(shape) => {
                 shape.rect = transform * shape.rect;
+            }
+            Self::Arc(arc) => {
+                arc.transform(transform);
             }
         }
     }

@@ -82,6 +82,7 @@ impl Default for DemoGroups {
                 Box::<super::screenshot::Screenshot>::default(),
                 Box::<super::scrolling::Scrolling>::default(),
                 Box::<super::sliders::Sliders>::default(),
+                Box::<super::stroke_and_arcs::StrokeAndArcsDemo>::default(),
                 Box::<super::strip_demo::StripDemo>::default(),
                 Box::<super::table_demo::TableDemo>::default(),
                 Box::<super::text_edit::TextEditDemo>::default(),

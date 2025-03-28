@@ -1,3 +1,4 @@
+mod arc_shape;
 mod bezier_shape;
 mod circle_shape;
 mod ellipse_shape;
@@ -8,6 +9,7 @@ mod shape;
 mod text_shape;
 
 pub use self::{
+    arc_shape::ArcShape,
     bezier_shape::{CubicBezierShape, QuadraticBezierShape},
     circle_shape::CircleShape,
     ellipse_shape::EllipseShape,
